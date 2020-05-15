@@ -5,4 +5,4 @@
 
 vasm6502_oldstyle
 vobjdump
-*.bin
+bin/
