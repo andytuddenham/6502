@@ -1,0 +1,8 @@
+*.swp
+*.swo
+
+.vscode
+
+vasm6502_oldstyle
+vobjdump
+*.bin
