@@ -4,9 +4,9 @@ import sys, getopt
 
 def main(argv):
     outfile = 'blink_led.rom'
-    codename = 'blink_led'
 
-    blink_led = bytearray([
+    code = {}
+    code['blink_led'] = bytearray([
         0xa9, 0xff,         # lda #$ff
         0x8d, 0x02, 0x60,   # sta $6002
 
@@ -19,7 +19,7 @@ def main(argv):
         0x4c, 0x05, 0x80,   # jmp $8005
         ])
 
-    rotate_led = bytearray([
+    code['rotate_led'] = bytearray([
         0xa9, 0xff,         # lda #$ff
         0x8d, 0x02, 0x60,   # sta $6002
 
@@ -31,8 +31,6 @@ def main(argv):
 
         0x4c, 0x0a, 0x80,   # jmp $8005
         ])
-
-    code = blink_led
 
     try:
         opts, args = getopt.getopt(argv,"ho:c:",["ofile=","code="])
@@ -46,15 +44,11 @@ def main(argv):
         elif opt in ("-o", "--ofile"):
             outfile = arg
         elif opt in ("-c", "--code"):
-            codename = arg
-            if codename == 'rotate_led':
-                code = rotate_led
-            else:
-                code = blink_led
+            print ('Code is ', arg)
+            rom = code[arg]
     print ('Output file is ', outfile)
-    print ('Code is ', codename)
 
-    rom = code + bytearray([0xea] * (32768 - len(code)))
+    rom = rom + bytearray([0xea] * (32768 - len(rom)))
 
     rom[0x7ffc] = 0x00
     rom[0x7ffd] = 0x80
