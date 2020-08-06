@@ -3,12 +3,22 @@ PORTA = $6001
 DDRB = $6002
 DDRA = $6003
 
-temp = $1000
-value = $1001
-counter = $1002
-numerator = $1003
-denominator = $1004
-remainder = $1005
+; work area for fibonacci
+fib_temp = $1000        ; 2 bytes
+fib_1 = $1002           ; 2 bytes
+fib_2 = $1004           ; 2 bytes
+; last byte of fibonacci work area is $1005
+
+; work are for print_value
+pv_value = $1006        ; 2 bytes
+pv_strNumber = $1008    ; 10 bytes (inc null terminator)
+; last byte of print_value work area is $1011
+
+; work area for divide
+div_numerator = $1012   ; 2 bytes
+div_remainder = $1014   ; 2 bytes
+div_denominator = $1016 ; 1 byte
+; last byte of divide work area is $1016
 
 E  = %10000000
 RW = %01000000
@@ -21,19 +31,61 @@ reset:
   txs                   ; Set stack pointer to top of stack
   jsr init
 
+fibonacci:
   lda #0
-  sta temp
-  ldy #1
-loop:
-  jsr print_value       ; print the current value in the accumulator
+  sta fib_1
+  sta fib_1 + 1
+  sta fib_temp
+  sta fib_temp + 1
+  sta fib_2 + 1
+  lda #1
+  sta fib_2
+
+fib_loop:
+  lda fib_1
+  sta pv_value
+  lda fib_1 + 1
+  sta pv_value + 1
+  jsr print_value       ; print the current value
   bcs stop              ; if adc caused the carry bit to be set, we've printed the last value
   jsr delay
-  sty temp
-  adc temp
-  sta temp
-  tya
-  ldy temp
-  jmp loop
+
+  ; transfer fib_2 -> fib_temp
+  lda fib_2
+  sta fib_temp
+  lda fib_2 + 1
+  sta fib_temp + 1
+
+  ; fib_1 += fib_temp
+  lda fib_1
+  clc
+  adc fib_temp
+  tay
+  lda fib_1 + 1
+  adc fib_temp + 1      ; if this causes a carry then we should stop after the next print
+  sty fib_1
+  sta fib_1 + 1
+
+  ; transfer fib_1 -> fib_temp
+  lda fib_1
+  sta fib_temp
+  lda fib_1 + 1
+  sta fib_temp + 1
+
+  ; transfer fib_2 -> fib_1
+  lda fib_2
+  sta fib_1
+  lda fib_2 + 1
+  sta fib_1 + 1
+
+  ; transfer fib_temp -> fib_2
+  lda fib_temp
+  sta fib_2
+  lda fib_temp + 1
+  sta fib_2 + 1
+
+  jmp fib_loop
+; end fibonacci
 
 stop:
   lda #%11000000        ; set display address to line 2 column 1
@@ -48,70 +100,122 @@ stopm:
 end:
   stp                   ; execution ends here
 
+; Input
+;   pv_value: the 16 bit value to be printed
 print_value:
-  sta value             ; save the value to be printed
   php                   ; save processor status
   pha                   ; save accumulator
+
   lda #%00000001        ; clear display
   jsr lcd_instruction
-  lda #%10000111        ; set display address to line 1 column 7
+  lda #%10000010        ; set display address to line 1 column 2
   jsr lcd_instruction
-  lda value
-  sta numerator
+
+  lda #0
+  sta pv_strNumber      ; set string to zero length
+  lda pv_value
+  sta div_numerator
+  lda pv_value + 1
+  sta div_numerator + 1
   lda #10
-  sta denominator
+  sta div_denominator
+pv_nextchar
   jsr divide
-  lda remainder
+  lda div_remainder
+  clc
   adc char_zero
-  jsr print_char        ; print the units character
-  lda numerator
-  cmp #$0
+  jsr push_char
+  lda div_numerator
+  ora div_numerator + 1
+  bne pv_nextchar       ; if there are any bits in the numerator then we're not done yet
+  ; print pv_strNumber
+  ldx #0
+pv_print:
+  lda pv_strNumber,x
   beq pv_end
-  lda #%10000110        ; set display address to line 1 column 6
-  jsr lcd_instruction
-  jsr divide
-  lda remainder
-  adc char_zero
-  jsr print_char        ; print the tens character
-  lda numerator
-  cmp #$0
-  beq pv_end
-  lda #%10000101        ; set display address to line 1 column 5
-  jsr lcd_instruction
-  jsr divide
-  lda remainder
-  adc char_zero
-  jsr print_char        ; print the hundreds character
+  jsr print_char
+  inx
+  jmp pv_print
 pv_end:
-  pla                   ; reset accumulator
-  plp                   ; reset processor status
+  pla                   ; restore accumulator
+  plp                   ; restore processor status
   rts
+; end print_value
 
 ; input:
-;   numerator/denominator
+;   div_numerator contains the numerator
+;   div_denominator contains the denominator
 ; output
-;   numerator contains the quotient
-;   remainder contains the remainder
+;   div_numerator contains the quotient
+;   div_remainder contains the remainder
 divide:
+  php                   ; save processor status
   pha                   ; save accumulator
   txa
   pha                   ; save x register
   lda #0
-  ldx #8
-  asl numerator
-divide1:
-  rol
-  cmp denominator
-  bcc divide2
-  sbc denominator
-divide2:
-  rol numerator
+  sta div_remainder
+  sta div_remainder + 1
+  clc
+
+  ldx #16
+div_loop:
+  rol div_numerator
+  rol div_numerator + 1
+  rol div_remainder
+  rol div_remainder + 1
+
+  ; a, y = dividend - divisor
+  sec
+  lda div_remainder
+  sbc div_denominator   ; subtract denominator ffrom ow byte of remainder
+  tay                   ; save low byte in y
+  lda div_remainder + 1
+  sbc #0
+  bcc div_ignore_result ; branch if dividend < divisor
+  sty div_remainder
+  sta div_remainder + 1
+
+div_ignore_result:
   dex
-  bne divide1
-  sta remainder
+  bne div_loop
+  rol div_numerator
+  rol div_numerator + 1
   pla
-  tax                   ; reset x register
-  pla                   ; reset accumulator
+  tax                   ; restore x register
+  pla                   ; restore accumulator
+  plp                   ; restore processor status
+  rts
+; end divide
+
+; Function
+;   Add a character to the beginning of the null terminated string pv_strNumber
+; Input
+;   char to be added in the accumulator
+push_char:
+  php                   ; save processor state
+  phx                   ; save x register
+  phy                   ; save y register
+  pha                   ; save accumulator
+
+  pha                   ; save input char
+  ldy #0
+pc_loop:
+  lda pv_strNumber,y    ; get next char from string
+  tax                   ;   and put it in the x register
+  pla                   ; pull the character off the stack
+  sta pv_strNumber,y    ;   and add it to the string
+  iny
+  txa
+  pha                   ; push char from the string onto the stack
+  bne pc_loop
+  pla
+  sta pv_strNumber,y    ; add the null terminator to the end of the string
+
+  pla                   ; restore accumulator
+  ply                   ; restore y register
+  plx                   ; restore x register
+  plp                   ; restore processor status
   rts
 
 delay:
@@ -137,10 +241,11 @@ delay_endx:
   cmp #200
   bne delay_inca
   pla
-  tax                   ; reset x register
-  pla                   ; reset accumulator
-  plp                   ; reset processor status
+  tax                   ; restore x register
+  pla                   ; restore accumulator
+  plp                   ; restore processor status
   rts
+; end delay
 
 lcd_wait:
   pha
@@ -160,6 +265,7 @@ lcd_busy:
   sta DDRB
   pla
   rts
+; end lcd_wait
 
 lcd_instruction:
   pha
@@ -173,6 +279,7 @@ lcd_instruction:
   sta PORTA
   pla
   rts
+; end lcd_instruction
 
 print_char:
   pha
@@ -186,6 +293,7 @@ print_char:
   sta PORTA
   pla
   rts
+; end print_char
 
 init:
   pha                   ; save accumulator
@@ -208,8 +316,9 @@ init:
   lda #%00000001 ; Clear display
   jsr lcd_instruction
 
-  pla
-  rts
+  pla                   ; restore accumulator
+  rts                   ; return from subroutine
+; end init
 
 end_message:    .asciiz "End"
 char_zero:      .byte '0'
