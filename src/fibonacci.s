@@ -3,20 +3,24 @@ PORTA = $6001
 DDRB = $6002
 DDRA = $6003
 
+; work area for print_message
+pm_textAddress = $0080  ; 2 bytes
+; last byte of print_message work area is $0081
+
 ; work area for fibonacci
 fib_temp = $1000        ; 2 bytes
-fib_1 = $1002           ; 2 bytes
-fib_2 = $1004           ; 2 bytes
+fib_1    = $1002        ; 2 bytes
+fib_2    = $1004        ; 2 bytes
 ; last byte of fibonacci work area is $1005
 
-; work are for print_value
-pv_value = $1006        ; 2 bytes
-pv_strNumber = $1008    ; 10 bytes (inc null terminator)
-; last byte of print_value work area is $1011
+; work area for print_number
+pn_value     = $1006    ; 2 bytes
+pn_strNumber = $1008    ; 10 bytes (inc null terminator)
+; last byte of print_number work area is $1011
 
 ; work area for divide
-div_numerator = $1012   ; 2 bytes
-div_remainder = $1014   ; 2 bytes
+div_numerator   = $1012 ; 2 bytes
+div_remainder   = $1014 ; 2 bytes
 div_denominator = $1016 ; 1 byte
 ; last byte of divide work area is $1016
 
@@ -32,21 +36,20 @@ reset:
   jsr init
 
 fibonacci:
-  lda #0
-  sta fib_1
-  sta fib_1 + 1
-  sta fib_temp
-  sta fib_temp + 1
-  sta fib_2 + 1
+  stz fib_1
+  stz fib_1 + 1
+  stz fib_temp
+  stz fib_temp + 1
   lda #1
   sta fib_2
-
+  stz fib_2 + 1
+ 
 fib_loop:
   lda fib_1
-  sta pv_value
+  sta pn_value
   lda fib_1 + 1
-  sta pv_value + 1
-  jsr print_value       ; print the current value
+  sta pn_value + 1
+  jsr print_number       ; print the current number
   bcs stop              ; if adc caused the carry bit to be set, we've printed the last value
   jsr delay
 
@@ -90,19 +93,19 @@ fib_loop:
 stop:
   lda #%11000000        ; set display address to line 2 column 1
   jsr lcd_instruction
-  ldx #0
-stopm:
-  lda end_message,x
-  beq end
-  jsr print_char
-  inx
-  jmp stopm
+
+; set address of end_messsage into pm_textAddress then call print_message
+  lda #(end_message&$00ff)
+  sta pm_textAddress
+  lda #(end_message>>8)
+  sta pm_textAddress + 1
+  jsr print_message
 end:
   stp                   ; execution ends here
 
 ; Input
-;   pv_value: the 16 bit value to be printed
-print_value:
+;   pn_value: the 16 bit value to be printed
+print_number:
   php                   ; save processor status
   pha                   ; save accumulator
 
@@ -111,36 +114,35 @@ print_value:
   lda #%10000010        ; set display address to line 1 column 2
   jsr lcd_instruction
 
-  lda #0
-  sta pv_strNumber      ; set string to zero length
-  lda pv_value
+  stz pn_strNumber      ; set string to zero length
+  lda pn_value
   sta div_numerator
-  lda pv_value + 1
+  lda pn_value + 1
   sta div_numerator + 1
   lda #10
   sta div_denominator
-pv_nextchar
+pn_nextchar
   jsr divide
   lda div_remainder
   clc
   adc char_zero
-  jsr push_char
+  jsr push_char         ; push the latest characer onto the front of pn_strNumber
   lda div_numerator
   ora div_numerator + 1
-  bne pv_nextchar       ; if there are any bits in the numerator then we're not done yet
-  ; print pv_strNumber
-  ldx #0
-pv_print:
-  lda pv_strNumber,x
-  beq pv_end
-  jsr print_char
-  inx
-  jmp pv_print
-pv_end:
+  bne pn_nextchar       ; if there are any bits in the numerator then we're not done yet
+
+; set address of pn_strNumber into pm_textAddress then call print_message
+  lda #(pn_strNumber&$00ff)
+  sta pm_textAddress
+  lda #(pn_strNumber>>8)
+  sta pm_textAddress + 1
+  jsr print_message
+
+pn_end:
   pla                   ; restore accumulator
   plp                   ; restore processor status
   rts
-; end print_value
+; end print_number
 
 ; input:
 ;   div_numerator contains the numerator
@@ -151,11 +153,9 @@ pv_end:
 divide:
   php                   ; save processor status
   pha                   ; save accumulator
-  txa
-  pha                   ; save x register
-  lda #0
-  sta div_remainder
-  sta div_remainder + 1
+  phx                   ; save x register
+  stz div_remainder
+  stz div_remainder + 1
   clc
 
   ldx #16
@@ -166,9 +166,9 @@ div_loop:
   rol div_remainder + 1
 
   ; a, y = dividend - divisor
-  sec
+  sec                   ; set the carry bit so that we have something to borrow from
   lda div_remainder
-  sbc div_denominator   ; subtract denominator ffrom ow byte of remainder
+  sbc div_denominator   ; subtract denominator from low byte of remainder
   tay                   ; save low byte in y
   lda div_remainder + 1
   sbc #0
@@ -181,15 +181,14 @@ div_ignore_result:
   bne div_loop
   rol div_numerator
   rol div_numerator + 1
-  pla
-  tax                   ; restore x register
+  plx                   ; restore x register
   pla                   ; restore accumulator
   plp                   ; restore processor status
   rts
 ; end divide
 
 ; Function
-;   Add a character to the beginning of the null terminated string pv_strNumber
+;   Add a character to the beginning of the null terminated string pn_strNumber
 ; Input
 ;   char to be added in the accumulator
 push_char:
@@ -201,28 +200,28 @@ push_char:
   pha                   ; save input char
   ldy #0
 pc_loop:
-  lda pv_strNumber,y    ; get next char from string
+  lda pn_strNumber,y    ; get next char from string
   tax                   ;   and put it in the x register
   pla                   ; pull the character off the stack
-  sta pv_strNumber,y    ;   and add it to the string
+  sta pn_strNumber,y    ;   and add it to the string
   iny
   txa
   pha                   ; push char from the string onto the stack
   bne pc_loop
   pla
-  sta pv_strNumber,y    ; add the null terminator to the end of the string
+  sta pn_strNumber,y    ; add the null terminator to the end of the string
 
   pla                   ; restore accumulator
   ply                   ; restore y register
   plx                   ; restore x register
   plp                   ; restore processor status
   rts
+; end push_char
 
 delay:
   php                   ; save processor state
   pha                   ; save accumulator
-  txa
-  pha                   ; save x register
+  phx                   ; save x register
   lda #0
 delay_inca:
   ldx #0
@@ -240,16 +239,17 @@ delay_endx:
   adc #1
   cmp #200
   bne delay_inca
-  pla
-  tax                   ; restore x register
+  plx                   ; restore x register
   pla                   ; restore accumulator
   plp                   ; restore processor status
   rts
 ; end delay
 
 lcd_wait:
-  pha
-  lda #%00000000    ; Set Port B to input
+  php                   ; save processor state
+  pha                   ; save accumulator
+
+  lda #%00000000        ; Set Port B to input
   sta DDRB
 lcd_busy:
   lda #RW
@@ -263,35 +263,63 @@ lcd_busy:
   sta PORTA
   lda #%11111111    ; Set Port B to output
   sta DDRB
-  pla
+
+  pla                   ; restore accumulator
+  plp                   ; restore processor status
   rts
 ; end lcd_wait
 
 lcd_instruction:
-  pha
+  php                   ; save processor state
+  pha                   ; save accumulator
+
   jsr lcd_wait
   sta PORTB
-  lda #0         ; Clear RS/RW/E bits
+  lda #0                ; Clear RS/RW/E bits
   sta PORTA
-  lda #E         ; Set E bit to send instruction
+  lda #E                ; Set E bit to send instruction
   sta PORTA
-  lda #0         ; Clear RS/RW/E bits
+  lda #0                ; Clear RS/RW/E bits
   sta PORTA
-  pla
+
+  pla                   ; restore accumulator
+  plp                   ; restore processor status
   rts
 ; end lcd_instruction
 
+print_message:
+  php                   ; save processor state
+  pha                   ; save accumulator
+  phy                   ; save y register
+
+ ldy #0
+pm_nextchar:
+  lda (pm_textAddress),y
+  beq pm_end            ; stop when we reach the null terminator
+  jsr print_char
+  iny
+  jmp pm_nextchar
+
+pm_end:
+  ply                   ; restore y register
+  pla                   ; restore accumulator
+  plp                   ; restore processor status
+  rts
+; end print_message
+
 print_char:
-  pha
+  php                   ; save processor state
+  pha                   ; save accumulator
   jsr lcd_wait
   sta PORTB
-  lda #RS        ; Set RS; clear RW/E bits
+  lda #RS               ; Set RS; clear RW/E bits
   sta PORTA
-  lda #(RS | E)  ; Set E bit to send instruction
+  lda #(RS | E)         ; Set E bit to send instruction
   sta PORTA
-  lda #0         ; Clear E bit
+  lda #0                ; Clear E bit
   sta PORTA
-  pla
+  pla                   ; restore accumulator
+  plp                   ; restore processor status
   rts
 ; end print_char
 
@@ -301,19 +329,19 @@ init:
   cld                   ;       decimal
   clv                   ;       overflow
 
-  lda #$ff       ; Set all pins on port B to output
+  lda #$ff              ; Set all pins on port B to output
   sta DDRB
 
-  lda #$e0       ; Set top 3 pins on port A to output
+  lda #$e0              ; Set top 3 pins on port A to output
   sta DDRA
 
-  lda #%00111000 ; Set 8-bit mode; 2-line display; 5x8 font
+  lda #%00111000        ; Set 8-bit mode; 2-line display; 5x8 font
   jsr lcd_instruction
-  lda #%00001100 ; Display on; cursor off; blink off
+  lda #%00001100        ; Display on; cursor off; blink off
   jsr lcd_instruction
-  lda #%00000110 ; Increment and shift cursor; don't shift display
+  lda #%00000110        ; Increment and shift cursor; don't shift display
   jsr lcd_instruction
-  lda #%00000001 ; Clear display
+  lda #%00000001        ; Clear display
   jsr lcd_instruction
 
   pla                   ; restore accumulator
