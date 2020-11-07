@@ -2,6 +2,9 @@ PORTB = $6000
 PORTA = $6001
 DDRB = $6002
 DDRA = $6003
+PCR = $600c
+IFR = $600d
+IER = $600e
 
 ; work area for print_message
 pm_textAddress = $0080  ; 2 bytes
@@ -335,6 +338,11 @@ init:
   lda #$e0              ; Set top 3 pins on port A to output
   sta DDRA
 
+  lda #$82
+  sta IER               ; Enable CA1 interrupt
+  lda #$00
+  sta PCR               ; Set CA1 to Negative active edge
+
   lda #%00111000        ; Set 8-bit mode; 2-line display; 5x8 font
   jsr lcd_instruction
   lda #%00001100        ; Display on; cursor off; blink off
@@ -344,13 +352,43 @@ init:
   lda #%00000001        ; Clear display
   jsr lcd_instruction
 
+  cli                   ; Enable interrupts
+
   pla                   ; restore accumulator
   rts                   ; return from subroutine
 ; end init
 
+nmi:
+  ; nmi is currently ignored
+  rti
+; end nmi
+
+irq:
+  phx                   ; save x register
+  phy                   ; save y register
+irq_exit:
+; TODO
+; Having a delay in an interrupt handler is a bad idea, but will suffice
+; until I've added h/w de-bounce to the buttons that cause the interrupt
+  ldy #$80
+  ldx #$ff
+irq_delay:
+  dex
+  bne irq_delay
+  dey
+  bne irq_delay
+; End TODO
+  bit PORTA             ; Clear the interrupt
+  pla                   ; restore accumulator
+  ply                   ; restore y register
+  plx                   ; restore x register
+  rti
+; end irq
+
 end_message:    .asciiz "End"
 char_zero:      .byte '0'
 
-  .org $fffc
+  .org $fffa
+  .word nmi
   .word reset
-  .word $0000
+  .word irq
