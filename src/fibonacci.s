@@ -338,10 +338,10 @@ init:
   lda #$e0              ; Set top 3 pins on port A to output
   sta DDRA
 
-  lda #$82
-  sta IER               ; Enable CA1 interrupt
+  lda #$83
+  sta IER               ; Enable CA1 & CA2 interrupts
   lda #$00
-  sta PCR               ; Set CA1 to Negative active edge
+  sta PCR               ; Set CA1/CA2 to Negative active edge
 
   lda #%00111000        ; Set 8-bit mode; 2-line display; 5x8 font
   jsr lcd_instruction
@@ -366,6 +366,14 @@ nmi:
 irq:
   phx                   ; save x register
   phy                   ; save y register
+  lda #%11000000        ; set display address to line 2 column 1
+  jsr lcd_instruction
+; set address of int_messsage into pm_textAddress then call print_message
+  lda #(int_message&$00ff)
+  sta pm_textAddress
+  lda #(int_message>>8)
+  sta pm_textAddress + 1
+  jsr print_message
 irq_exit:
 ; TODO
 ; Having a delay in an interrupt handler is a bad idea, but will suffice
@@ -378,12 +386,22 @@ irq_delay:
   dey
   bne irq_delay
 ; End TODO
+  lda #%11000000        ; set display address to line 2 column 1
+  jsr lcd_instruction
+; set address of blank_messsage into pm_textAddress then call print_message
+  lda #(blank_message&$00ff)
+  sta pm_textAddress
+  lda #(blank_message>>8)
+  sta pm_textAddress + 1
+  jsr print_message
   bit PORTA             ; Clear the interrupt
   ply                   ; restore y register
   plx                   ; restore x register
   rti
 ; end irq
 
+int_message:    .asciiz "Int"
+blank_message:  .asciiz "   "
 end_message:    .asciiz "End"
 char_zero:      .byte '0'
 
