@@ -379,7 +379,6 @@ irq_delay:
   bne irq_delay
 ; End TODO
   bit PORTA             ; Clear the interrupt
-  pla                   ; restore accumulator
   ply                   ; restore y register
   plx                   ; restore x register
   rti
