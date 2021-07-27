@@ -6,9 +6,9 @@ PCR = $600c
 IFR = $600d
 IER = $600e
 
-; work area for print_message
+; work area for lcd_printm
 pm_textAddress = $0080  ; 2 bytes
-; last byte of print_message work area is $0081
+; last byte of lcd_printm work area is $0081
 
 ; work area for fibonacci
 fib_temp = $1000        ; 2 bytes
@@ -26,10 +26,6 @@ div_numerator   = $1012 ; 2 bytes
 div_remainder   = $1014 ; 2 bytes
 div_denominator = $1016 ; 1 byte
 ; last byte of divide work area is $1016
-
-E  = %10000000
-RW = %01000000
-RS = %00100000
 
   .org $8000
 
@@ -52,7 +48,7 @@ fib_loop:
   sta pn_value
   lda fib_1 + 1
   sta pn_value + 1
-  jsr print_number       ; print the current number
+  jsr print_number      ; print the current number
   bcs stop              ; if adc caused the carry bit to be set, we've printed the last value
   jsr delay
 
@@ -97,12 +93,12 @@ stop:
   lda #%11000000        ; set display address to line 2 column 1
   jsr lcd_instruction
 
-; set address of end_messsage into pm_textAddress then call print_message
+; set address of end_messsage into pm_textAddress then call lcd_printm
   lda #(end_message&$00ff)
   sta pm_textAddress
   lda #(end_message>>8)
   sta pm_textAddress + 1
-  jsr print_message
+  jsr lcd_printm
 end:
   stp                   ; execution ends here
 
@@ -134,12 +130,12 @@ pn_nextchar
   ora div_numerator + 1
   bne pn_nextchar       ; if there are any bits in the numerator then we're not done yet
 
-; set address of pn_strNumber into pm_textAddress then call print_message
+; set address of pn_strNumber into pm_textAddress then call lcd_printm
   lda #(pn_strNumber&$00ff)
   sta pm_textAddress
   lda #(pn_strNumber>>8)
   sta pm_textAddress + 1
-  jsr print_message
+  jsr lcd_printm
 
 pn_end:
   pla                   ; restore accumulator
@@ -248,83 +244,7 @@ delay_endx:
   rts
 ; end delay
 
-lcd_wait:
-  php                   ; save processor state
-  pha                   ; save accumulator
-
-  lda #%00000000        ; Set Port B to input
-  sta DDRB
-lcd_busy:
-  lda #RW
-  sta PORTA
-  lda #(RW | E)
-  sta PORTA
-  lda PORTB
-  and #%10000000
-  bne lcd_busy
-  lda #RW
-  sta PORTA
-  lda #%11111111    ; Set Port B to output
-  sta DDRB
-
-  pla                   ; restore accumulator
-  plp                   ; restore processor status
-  rts
-; end lcd_wait
-
-lcd_instruction:
-  php                   ; save processor state
-  pha                   ; save accumulator
-
-  jsr lcd_wait
-  sta PORTB
-  lda #0                ; Clear RS/RW/E bits
-  sta PORTA
-  lda #E                ; Set E bit to send instruction
-  sta PORTA
-  lda #0                ; Clear RS/RW/E bits
-  sta PORTA
-
-  pla                   ; restore accumulator
-  plp                   ; restore processor status
-  rts
-; end lcd_instruction
-
-print_message:
-  php                   ; save processor state
-  pha                   ; save accumulator
-  phy                   ; save y register
-
- ldy #0
-pm_nextchar:
-  lda (pm_textAddress),y
-  beq pm_end            ; stop when we reach the null terminator
-  jsr print_char
-  iny
-  jmp pm_nextchar
-
-pm_end:
-  ply                   ; restore y register
-  pla                   ; restore accumulator
-  plp                   ; restore processor status
-  rts
-; end print_message
-
-print_char:
-  php                   ; save processor state
-  pha                   ; save accumulator
-  jsr lcd_wait
-  sta PORTB
-  lda #RS               ; Set RS; clear RW/E bits
-  sta PORTA
-  lda #(RS | E)         ; Set E bit to send instruction
-  sta PORTA
-  lda #0                ; Clear E bit
-  sta PORTA
-  pla                   ; restore accumulator
-  plp                   ; restore processor status
-  rts
-; end print_char
+  .include lcd.inc
 
 init:
   pha                   ; save accumulator
@@ -343,14 +263,7 @@ init:
   lda #$00
   sta PCR               ; Set CA1/CA2 to Negative active edge
 
-  lda #%00111000        ; Set 8-bit mode; 2-line display; 5x8 font
-  jsr lcd_instruction
-  lda #%00001100        ; Display on; cursor off; blink off
-  jsr lcd_instruction
-  lda #%00000110        ; Increment and shift cursor; don't shift display
-  jsr lcd_instruction
-  lda #%00000001        ; Clear display
-  jsr lcd_instruction
+  jsr lcd_init          ; Initialise the lcd display
 
   cli                   ; Enable interrupts
 
@@ -368,12 +281,12 @@ irq:
   phy                   ; save y register
   lda #%11000000        ; set display address to line 2 column 1
   jsr lcd_instruction
-; set address of int_messsage into pm_textAddress then call print_message
+; set address of int_messsage into pm_textAddress then call lcd_printm
   lda #(int_message&$00ff)
   sta pm_textAddress
   lda #(int_message>>8)
   sta pm_textAddress + 1
-  jsr print_message
+  jsr lcd_printm
 irq_exit:
 ; TODO
 ; Having a delay in an interrupt handler is a bad idea, but will suffice
@@ -388,12 +301,12 @@ irq_delay:
 ; End TODO
   lda #%11000000        ; set display address to line 2 column 1
   jsr lcd_instruction
-; set address of blank_messsage into pm_textAddress then call print_message
+; set address of blank_messsage into pm_textAddress then call lcd_printm
   lda #(blank_message&$00ff)
   sta pm_textAddress
   lda #(blank_message>>8)
   sta pm_textAddress + 1
-  jsr print_message
+  jsr lcd_printm
   bit PORTA             ; Clear the interrupt
   ply                   ; restore y register
   plx                   ; restore x register
