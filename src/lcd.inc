@@ -1,8 +1,16 @@
+DDRB = $6002
+DDRA = $6003
 E  = %10000000
 RW = %01000000
 RS = %00100000
 
 lcd_init:
+  lda #$ff              ; Set all pins on port B to output
+  sta DDRB
+
+  lda #$e0              ; Set top 3 pins on port A to output
+  sta DDRA
+
   lda #%00111000        ; Set 8-bit mode; 2-line display; 5x8 font
   jsr lcd_instruction
   lda #%00001100        ; Display on; cursor off; blink off

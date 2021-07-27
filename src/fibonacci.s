@@ -1,7 +1,5 @@
 PORTB = $6000
 PORTA = $6001
-DDRB = $6002
-DDRA = $6003
 PCR = $600c
 IFR = $600d
 IER = $600e
@@ -251,12 +249,6 @@ init:
   clc                   ; clear carry
   cld                   ;       decimal
   clv                   ;       overflow
-
-  lda #$ff              ; Set all pins on port B to output
-  sta DDRB
-
-  lda #$e0              ; Set top 3 pins on port A to output
-  sta DDRA
 
   lda #$83
   sta IER               ; Enable CA1 & CA2 interrupts
