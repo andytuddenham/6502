@@ -1,12 +1,12 @@
-PORTB = $6000
+LCD_PORT = $6000
+LCD_DDR  = $6002
+
 PORTA = $6001
+DDRA = $6003
+
 PCR = $600c
 IFR = $600d
 IER = $600e
-
-; work area for lcd_printm
-pm_textAddress = $0080  ; 2 bytes
-; last byte of lcd_printm work area is $0081
 
 ; work area for fibonacci
 fib_temp = $1000        ; 2 bytes
@@ -91,12 +91,12 @@ stop:
   lda #%11000000        ; set display address to line 2 column 1
   jsr lcd_instruction
 
-; set address of end_messsage into pm_textAddress then call lcd_printm
+; set address of end_messsage into pm_textAddress then call lcd_print_msg
   lda #(end_message&$00ff)
   sta pm_textAddress
   lda #(end_message>>8)
   sta pm_textAddress + 1
-  jsr lcd_printm
+  jsr lcd_print_msg
 end:
   stp                   ; execution ends here
 
@@ -128,12 +128,12 @@ pn_nextchar
   ora div_numerator + 1
   bne pn_nextchar       ; if there are any bits in the numerator then we're not done yet
 
-; set address of pn_strNumber into pm_textAddress then call lcd_printm
+; set address of pn_strNumber into pm_textAddress then call lcd_print_msg
   lda #(pn_strNumber&$00ff)
   sta pm_textAddress
   lda #(pn_strNumber>>8)
   sta pm_textAddress + 1
-  jsr lcd_printm
+  jsr lcd_print_msg
 
 pn_end:
   pla                   ; restore accumulator
@@ -273,12 +273,12 @@ irq:
   phy                   ; save y register
   lda #%11000000        ; set display address to line 2 column 1
   jsr lcd_instruction
-; set address of int_messsage into pm_textAddress then call lcd_printm
+; set address of int_messsage into pm_textAddress then call lcd_print_msg
   lda #(int_message&$00ff)
   sta pm_textAddress
   lda #(int_message>>8)
   sta pm_textAddress + 1
-  jsr lcd_printm
+  jsr lcd_print_msg
 irq_exit:
 ; TODO
 ; Having a delay in an interrupt handler is a bad idea, but will suffice
@@ -293,12 +293,12 @@ irq_delay:
 ; End TODO
   lda #%11000000        ; set display address to line 2 column 1
   jsr lcd_instruction
-; set address of blank_messsage into pm_textAddress then call lcd_printm
+; set address of blank_messsage into pm_textAddress then call lcd_print_msg
   lda #(blank_message&$00ff)
   sta pm_textAddress
   lda #(blank_message>>8)
   sta pm_textAddress + 1
-  jsr lcd_printm
+  jsr lcd_print_msg
   bit PORTA             ; Clear the interrupt
   ply                   ; restore y register
   plx                   ; restore x register
