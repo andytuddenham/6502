@@ -12,7 +12,7 @@ DUMPFLAGS := -C
 
 all: $(ROMFILES) $(BIN_DIR)/blink_led.rom $(BIN_DIR)/rotate_led.rom
 
-$(BIN_DIR)/%.rom: $(SRC_DIR)/%.s | $(BIN_DIR)
+$(BIN_DIR)/%.rom: $(SRC_DIR)/%.s $(SRC_DIR)/lcd.inc | $(BIN_DIR)
 	$(AS) $(ASFLAGS) -o $@ $<
 	$(DUMP) $(DUMPFLAGS) $@
 
@@ -26,6 +26,9 @@ $(BIN_DIR):
 install:
 #	minipro -p AT28C256 -w $(BIN_DIR)/HelloWorld.rom
 	minipro -p AT28C256 -w $(BIN_DIR)/fibonacci.rom
+
+test:
+	minipro -z -p AT28C256
 
 clean:
 	$(RM) -r $(BIN_DIR)
